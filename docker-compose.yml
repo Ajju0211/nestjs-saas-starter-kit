@@ -1,0 +1,64 @@
+name: ${COMPOSE_PROJECT_NAME:-nestjs-enterprise}
+
+services:
+
+  migrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: sh -c "node_modules/.bin/prisma migrate deploy"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app_net
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrator:
+        condition: service_completed_successfully
+    networks:
+      - app_net
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - app_net
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - app_net
+
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-postgres_data}
+  redis_data:
+    name: ${REDIS_VOLUME_NAME:-redis_data}
+
+networks:
+  app_net:
+    driver: bridge
